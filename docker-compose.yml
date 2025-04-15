@@ -1,0 +1,157 @@
+﻿services:
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: recruitapp-nginx
+    container_name: recruitapp-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - frontend-dev
+      - backend
+    networks:
+      - app-network
+    volumes:
+      - ./nginx/proxy.conf:/etc/nginx/conf.d/proxy.conf
+      - nginx-logs:/var/log/nginx
+
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    image: recruitapp-frontend-dev
+    container_name: recruitapp-frontend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # 排除node_modules目录，使用容器内的模块
+    environment:
+      - NODE_ENV=development
+      - VITE_APP_API_URL=http://backend:8000 # 后端API地址，使用Docker网络中的容器名
+      - CHOKIDAR_USEPOLLING=true # 启用轮询，在某些Docker环境中需要
+    command: npm run dev -- --host 0.0.0.0 # 确保在容器内部监听所有网络接口
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  frontend-prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: recruitapp-frontend-prod
+    container_name: recruitapp-frontend-prod
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    profiles:
+      - prod # 只在生产环境下启动
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: recruitapp-backend
+    container_name: recruitapp-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend-media:/app/media # 持久化媒体文件
+      - backend-static:/app/static # 持久化静态文件
+    env_file:
+      - ./.env
+    environment:
+      - DJANGO_SETTINGS_MODULE=core.settings
+      - DJANGO_SUPERUSER_USERNAME=root
+      - DJANGO_SUPERUSER_EMAIL=2314679829@qq.com
+      - DJANGO_SUPERUSER_PASSWORD=admin123456
+      - USE_REDIS=True # 启用Redis存储验证码
+    depends_on:
+      db:
+        condition: service_healthy # 等待数据库健康检查通过
+      redis:
+        condition: service_healthy # 等待Redis健康检查通过
+    # 使用自定义启动命令，先等待数据库就绪
+    command: >
+      bash -c "
+        python db-wait.py db 60 &&
+        python create_db.py &&
+        python manage.py migrate &&
+        echo 'from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.filter(username=\"root\").exists() or User.objects.create_superuser(\"root\", \"2314679829@qq.com\", \"admin123456\")' | python manage.py shell &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+    networks:
+      - app-network
+
+  db:
+    image: mysql:8.0
+    container_name: recruitapp-db
+    restart: always
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    env_file:
+      - ./.env
+    networks:
+      - app-network
+    # 添加健康检查
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # Redis服务配置
+  redis:
+    image: redis:7-alpine
+    container_name: recruitapp-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog 511
+      --tcp-keepalive 300
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  backend-media:
+  backend-static:
+  nginx-logs:
+  redis-data: # Redis数据卷

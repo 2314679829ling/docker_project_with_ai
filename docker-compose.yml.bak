@@ -1,0 +1,91 @@
+version: "3.8"
+
+services:
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    image: recruitapp-frontend-dev
+    container_name: recruitapp-frontend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # 排除node_modules目录，使用容器内的模块
+    environment:
+      - NODE_ENV=development
+      - VITE_APP_API_URL=http://localhost:8000 # 后端API地址
+      - CHOKIDAR_USEPOLLING=true # 启用轮询，在某些Docker环境中需要
+    command: npm run dev -- --host 0.0.0.0 # 确保在容器内部监听所有网络接口
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  frontend-prod:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: recruitapp-frontend-prod
+    container_name: recruitapp-frontend-prod
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    profiles:
+      - prod # 只在生产环境下启动
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: recruitapp-backend
+    container_name: recruitapp-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend-media:/app/media # 持久化媒体文件
+      - backend-static:/app/static # 持久化静态文件
+    environment:
+      - DEBUG=True
+      - DJANGO_SETTINGS_MODULE=core.settings
+      - SECRET_KEY=${SECRET_KEY:-your_default_secret_key}
+      - DB_ENGINE=django.db.backends.mysql
+      - DB_NAME=${DB_NAME:-django_oauth}
+      - DB_USER=${DB_USER:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-password}
+      - DB_HOST=db
+      - DB_PORT=3306
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+  db:
+    image: mysql:8.0
+    container_name: recruitapp-db
+    restart: always
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-password}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-django_oauth}
+      - MYSQL_USER=${MYSQL_USER:-django}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-password}
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  backend-media:
+  backend-static:

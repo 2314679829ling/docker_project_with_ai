@@ -1,0 +1,103 @@
+@echo off
+rem 使用UTF-8编码保存，解决中文显示问题
+chcp 65001 > nul
+setlocal
+
+rem 获取命令行参数
+SET action=%1
+
+IF "%action%"=="" (
+  CALL :show_help
+  exit /b 0
+)
+
+rem 检查Docker是否已安装
+where docker >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+  echo 错误: 请先安装Docker
+  exit /b 1
+)
+
+rem 根据参数执行不同操作
+IF /I "%action%"=="dev" (
+  echo 启动开发环境（包含nginx）...
+  docker-compose up -d nginx frontend-dev backend db
+  exit /b 0
+)
+
+IF /I "%action%"=="prod" (
+  echo 启动生产环境（包含nginx）...
+  docker-compose --profile prod up -d nginx backend db
+  exit /b 0
+)
+
+IF /I "%action%"=="all" (
+  echo 启动所有容器（nginx、前端、后端、数据库）...
+  docker-compose up -d nginx frontend-dev backend db
+  exit /b 0
+)
+
+IF /I "%action%"=="down" (
+  echo 停止所有容器...
+  docker-compose down
+  exit /b 0
+)
+
+IF /I "%action%"=="rebuild" (
+  echo 重新构建所有镜像...
+  docker-compose build --no-cache
+  exit /b 0
+)
+
+IF /I "%action%"=="frontend" (
+  echo 仅启动前端容器...
+  docker-compose up -d frontend-dev
+  exit /b 0
+)
+
+IF /I "%action%"=="backend" (
+  echo 仅启动后端容器...
+  docker-compose up -d backend db
+  exit /b 0
+)
+
+IF /I "%action%"=="nginx" (
+  echo 仅启动Nginx容器...
+  docker-compose up -d nginx
+  exit /b 0
+)
+
+IF /I "%action%"=="logs" (
+  echo 查看所有容器日志...
+  docker-compose logs -f
+  exit /b 0
+)
+
+IF /I "%action%"=="help" (
+  CALL :show_help
+  exit /b 0
+) ELSE (
+  CALL :show_help
+  exit /b 0
+)
+
+exit /b 0
+
+:show_help
+  echo 小米实验室招聘系统 Docker启动脚本
+  echo.
+  echo 用法: docker-start.bat [选项]
+  echo.
+  echo 选项:
+  echo   dev          启动开发环境（前端热加载+Nginx）
+  echo   prod         启动生产环境（包含Nginx）
+  echo   all          启动所有容器（Nginx+前端+后端+数据库）
+  echo   down         停止所有容器
+  echo   rebuild      重新构建所有镜像
+  echo   frontend     仅启动前端容器
+  echo   backend      仅启动后端容器
+  echo   nginx        仅启动Nginx容器
+  echo   logs         查看所有容器日志
+  echo   help         显示此帮助信息
+  echo.
+  exit /b 0 
