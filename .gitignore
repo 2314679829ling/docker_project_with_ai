@@ -1,0 +1,56 @@
+# 根目录通用忽略
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器和IDE配置
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.settings/
+
+# 临时/本地文件
+*.tmp
+*.swp
+*.swo
+*~
+tmp/
+temp/
+.cache/
+
+# Docker相关
+.docker-compose.override.yml
+docker-compose.override.yml
+.docker/data/
+
+# Node (前端)
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+.pnpm-debug.log
+
+# Python (后端)
+__pycache__/
+*.py[cod]
+*.so
+.env
+venv/
+.venv/
+*.egg-info/
+*.egg
+.pytest_cache/
+
+# 构建产物
+/dist/
+/build/
+/out/
+
+# 日志文件
+/logs/
+*.log
+
+# 不包含在版本控制中的本地照片和媒体文件
+add_department_column.sql  # 本地SQL脚本 

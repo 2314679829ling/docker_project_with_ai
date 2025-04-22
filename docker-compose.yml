@@ -1,4 +1,4 @@
-﻿services:
+services:
   nginx:
     build:
       context: ./nginx
@@ -65,6 +65,7 @@
       - ./backend:/app
       - backend-media:/app/media # 持久化媒体文件
       - backend-static:/app/static # 持久化静态文件
+      - backend-logs:/app/logs # 持久化日志文件
     env_file:
       - ./.env
     environment:
@@ -73,22 +74,35 @@
       - DJANGO_SUPERUSER_EMAIL=2314679829@qq.com
       - DJANGO_SUPERUSER_PASSWORD=admin123456
       - USE_REDIS=True # 启用Redis存储验证码
+      - REDIS_HOST=redis # 正确设置Redis主机名为容器服务名
+      - REDIS_PORT=6379 # 设置Redis端口
+      - RESET_DATABASE=False # 默认不重置数据库，需要重置时修改为True
+      # 数据库连接参数
+      - DB_HOST=db # 使用容器名称，而非IP
+      - DB_PORT=3306
+      - DB_NAME=django_oauth
+      - DB_USER=root
+      - DB_PASSWORD=123456
     depends_on:
       db:
         condition: service_healthy # 等待数据库健康检查通过
       redis:
         condition: service_healthy # 等待Redis健康检查通过
-    # 使用自定义启动命令，先等待数据库就绪
-    command: >
-      bash -c "
-        python db-wait.py db 60 &&
-        python create_db.py &&
-        python manage.py migrate &&
-        echo 'from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.filter(username=\"root\").exists() or User.objects.create_superuser(\"root\", \"2314679829@qq.com\", \"admin123456\")' | python manage.py shell &&
-        python manage.py runserver 0.0.0.0:8000
-      "
+    # 使用简化的启动脚本
+    command: bash /app/simplified_entrypoint.sh
     networks:
       - app-network
+    # DNS配置
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/accounts/status/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   db:
     image: mysql:8.0
@@ -100,9 +114,18 @@
       - mysql-data:/var/lib/mysql
     env_file:
       - ./.env
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=100
+      --wait_timeout=28800
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456
+      - MYSQL_DATABASE=django_oauth
     networks:
       - app-network
-    # 添加健康检查
+    # 健康检查逻辑
     healthcheck:
       test:
         [
@@ -113,12 +136,12 @@
           "localhost",
           "-u",
           "root",
-          "-p$$MYSQL_ROOT_PASSWORD",
+          "-p123456",
         ]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 5
+      start_period: 30s
 
   # Redis服务配置
   redis:
@@ -148,10 +171,15 @@
 networks:
   app-network:
     driver: bridge
+    # 自定义DNS配置
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
 
 volumes:
   mysql-data:
   backend-media:
   backend-static:
+  backend-logs: # 后端日志数据卷
   nginx-logs:
   redis-data: # Redis数据卷

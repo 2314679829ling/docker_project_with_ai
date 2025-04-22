@@ -148,3 +148,63 @@ project/
 ## 许可证
 
 MIT License 
+
+# 邮件系统重构文档
+
+## 重构概述
+
+邮件系统重构的主要目标是消除系统中的冗余代码，统一邮件发送接口，提高系统维护性。重构工作主要集中在以下几个方面：
+
+1. 删除过时的邮件发送接口
+2. 统一使用 `email_service` 作为邮件发送的入口
+3. 确保验证码系统使用统一的生成和验证方法
+4. 保留必要的工具函数，如 `mask_email`
+
+## 修改的文件
+
+1. **email_utils.py**
+   - 删除了过时的 `send_email` 和 `send_verification_email` 函数
+   - 删除了过时的 `generate_verification_code` 函数
+   - 只保留 `mask_email` 函数用于邮箱脱敏
+
+2. **verification_utils.py**
+   - 更新导入，使用 `email_service` 代替旧的函数
+   - 使用 `email_service.verification_manager._generate_numeric_code()` 生成验证码
+   - 使用 `email_service.send_verification_email()` 发送验证码邮件
+
+3. **queue_utils.py**
+   - 更新导入，使用 `email_service` 代替旧的函数
+   - 使用 `email_service.verification_manager._generate_numeric_code()` 生成验证码
+   - 使用 `email_service.send_verification_email()` 发送验证码邮件
+
+4. **queue_adapter.py**
+   - 更新所有 `enqueue_email` 方法，使用 `email_service.send_email()` 发送邮件
+
+5. **redis_code.py**
+   - 更新验证码邮件发送代码，使用 `email_service.send_verification_email()` 发送邮件
+   - 修复变量名一致性问题 (`send_success` 改为 `success`)
+
+## 邮件系统架构
+
+重构后的邮件系统架构如下：
+
+1. **核心组件**:
+   - `email_service`: 统一的邮件服务入口，提供 `send_email` 和 `send_verification_email` 方法
+   - `verification_manager`: 负责验证码的生成和验证
+   - `EmailTemplateLoader`: 处理邮件模板的加载和渲染
+
+2. **发送流程**:
+   ```
+   应用调用 -> email_service -> 队列适配器 -> 邮件发送
+                                           -> 数据库记录
+   ```
+
+3. **其他工具**:
+   - `mask_email`: 对邮箱进行脱敏处理，用于日志和显示
+
+## 后续优化建议
+
+1. 进一步整合队列系统，统一使用一种队列实现方式
+2. 考虑移除 `redis_code.py` 中的冗余验证码处理代码
+3. 整合 `verification_utils.py` 和 `verification_manager.py` 中的验证码处理逻辑
+4. 将邮件模板从代码中分离，统一使用文件模板 
